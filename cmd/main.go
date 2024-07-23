@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/csv"
+	"errors"
 	"fmt"
 	"github.com/antchfx/htmlquery"
 	"github.com/go-resty/resty/v2"
@@ -16,7 +17,11 @@ type Solution struct {
 	Source string `json:"source"`
 }
 
-func GetMeta() (string, []*http.Cookie) {
+func GetMeta() (
+	string,
+	[]*http.Cookie,
+	error,
+) {
 	client := resty.New().SetDebug(false)
 
 	tokenResp, err := client.R().Get("https://codeforces.com")
@@ -28,23 +33,27 @@ func GetMeta() (string, []*http.Cookie) {
 
 	list := htmlquery.Find(doc, "//meta[@name='X-Csrf-Token']")
 
+	if len(list) == 0 {
+		return "", []*http.Cookie{}, errors.New("no X-Csrf-Token found")
+	}
+
 	CSRF := list[0].Attr[len(list[0].Attr)-1].Val
 
-	return CSRF, tokenResp.Cookies()
+	return CSRF, tokenResp.Cookies(), nil
 }
 
 func Worker(
 	chanelIN chan string,
 	chanelOUT chan []string,
-	wg *sync.WaitGroup,
 ) {
-	defer wg.Done()
-
 	client := resty.New().
 		SetDebug(false).
 		SetProxy("http://h3v3n5:motBAz@217.29.53.100:11937")
 
-	CSRF, cookies := GetMeta()
+	CSRF, cookies, err := GetMeta()
+	if err != nil {
+		return
+	}
 
 	solution := Solution{}
 
@@ -65,13 +74,16 @@ func Worker(
 			SetResult(&solution).
 			Post("https://codeforces.com/data/submitSource")
 		if err != nil {
+			log.Printf("%s: %t", item, false)
 			log.Printf("client.R() ::: %+v", err)
 		}
 
 		if solution.Source == "" {
-			log.Printf("client.R() ::: %+v\n", resp.Body())
+			log.Printf("%s: %t ::: %s\n", item, false, resp.Body())
+			continue
 		}
 
+		log.Printf("%s: %t", item, true)
 		chanelOUT <- []string{item, solution.Source}
 	}
 }
@@ -99,7 +111,6 @@ func ReadCSV(
 		if record[1] == "id" {
 			continue
 		}
-		fmt.Println(record[1])
 
 		chanel <- record[1]
 	}
@@ -131,7 +142,6 @@ func WriteCSV(
 	}
 
 	for item := range channel {
-		fmt.Println("writer", item)
 		if err = writer.Write(
 			item,
 		); err != nil {
@@ -143,16 +153,19 @@ func WriteCSV(
 }
 
 func main() {
-	chanelIN := make(chan string)
-	chanelOUT := make(chan []string)
+	chanelIN := make(chan string, 20)
+	chanelOUT := make(chan []string, 20)
 
 	wg := &sync.WaitGroup{}
 
-	wg.Add(3)
+	wg.Add(2)
 
 	go ReadCSV(chanelIN, wg)
 
-	go Worker(chanelIN, chanelOUT, wg)
+	go Worker(chanelIN, chanelOUT)
+	go Worker(chanelIN, chanelOUT)
+	go Worker(chanelIN, chanelOUT)
+	go Worker(chanelIN, chanelOUT)
 
 	go WriteCSV(chanelOUT, wg)
 
