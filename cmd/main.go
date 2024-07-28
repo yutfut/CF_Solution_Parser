@@ -2,88 +2,27 @@ package main
 
 import (
 	"encoding/csv"
-	"errors"
 	"fmt"
-	"github.com/antchfx/htmlquery"
-	"github.com/go-resty/resty/v2"
-	"log"
-	"net/http"
 	"os"
-	"strings"
+	"scp/internal/cfclient"
 	"sync"
 )
-
-type Solution struct {
-	Source string `json:"source"`
-}
-
-func GetMeta() (
-	string,
-	[]*http.Cookie,
-	error,
-) {
-	client := resty.New().SetDebug(false)
-
-	tokenResp, err := client.R().Get("https://codeforces.com")
-	if err != nil {
-		log.Printf("client.R() ::: %+v", err)
-	}
-
-	doc, err := htmlquery.Parse(strings.NewReader(string(tokenResp.Body())))
-
-	list := htmlquery.Find(doc, "//meta[@name='X-Csrf-Token']")
-
-	if len(list) == 0 {
-		return "", []*http.Cookie{}, errors.New("no X-Csrf-Token found")
-	}
-
-	CSRF := list[0].Attr[len(list[0].Attr)-1].Val
-
-	return CSRF, tokenResp.Cookies(), nil
-}
 
 func Worker(
 	chanelIN chan string,
 	chanelOUT chan []string,
 ) {
-	client := resty.New().
-		SetDebug(false).
-		SetProxy("http://h3v3n5:motBAz@217.29.53.100:11937")
-
-	CSRF, cookies, err := GetMeta()
-	if err != nil {
-		return
-	}
-
-	solution := Solution{}
+	client := cfclient.NewCFClient()
 
 	for item := range chanelIN {
-		resp, err := client.R().
-			SetHeaders(
-				map[string]string{
-					"X-Csrf-Token": CSRF,
-					"Referer":      "https://codeforces.com/problemset/status",
-				},
-			).
-			SetFormData(
-				map[string]string{
-					"submissionId": item,
-					"csrf_token":   CSRF,
-				},
-			).SetCookies(cookies).
-			SetResult(&solution).
-			Post("https://codeforces.com/data/submitSource")
+
+		solution, err := client.GetSolution(
+			item,
+		)
 		if err != nil {
-			log.Printf("%s: %t", item, false)
-			log.Printf("client.R() ::: %+v", err)
+			return
 		}
 
-		if solution.Source == "" {
-			log.Printf("%s: %t ::: %s\n", item, false, resp.Body())
-			continue
-		}
-
-		log.Printf("%s: %t", item, true)
 		chanelOUT <- []string{item, solution.Source}
 	}
 }
@@ -162,9 +101,6 @@ func main() {
 
 	go ReadCSV(chanelIN, wg)
 
-	go Worker(chanelIN, chanelOUT)
-	go Worker(chanelIN, chanelOUT)
-	go Worker(chanelIN, chanelOUT)
 	go Worker(chanelIN, chanelOUT)
 
 	go WriteCSV(chanelOUT, wg)
