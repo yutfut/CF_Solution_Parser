@@ -88,6 +88,7 @@ func (cf *CFClient) GetSolution(item string) (Solution, error) {
 
 		if solution.Source == "" {
 			log.Printf("%s: %t ::: %s\n", item, false, resp.Body())
+			return Solution{}, errors.New("solution not found")
 		} else {
 			log.Printf("%s: %s", item, solution.Source)
 			return solution, nil
