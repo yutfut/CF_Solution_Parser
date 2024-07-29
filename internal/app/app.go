@@ -2,26 +2,49 @@ package app
 
 import (
 	"context"
+	"log"
+	"scp/config"
+	"scp/internal/proxy"
 	"sync"
 	"time"
 
-	"scp/internal/cfclient"
 	"scp/internal/reader"
 	"scp/internal/worker"
 	"scp/internal/writer"
 )
 
+const (
+	path = "./config/config.json"
+)
+
 func Run(mainCtx context.Context) {
 	ctx, cancel := context.WithCancel(mainCtx)
 
-	input := make(chan string, 20)
-	output := make(chan []string, 20)
+	conf, err := config.ReadConf(path)
+	if err != nil {
+		log.Fatal(err)
+	}
 
-	r := reader.NewReader("./submissions.csv", input)
+	input := make(
+		chan string,
+		conf.Workers.InputChanel,
+	)
+	output := make(
+		chan []string,
+		conf.Workers.OutputChanel,
+	)
+
+	r := reader.NewReader(
+		conf.Files.Input,
+		input,
+	)
 
 	go r.Read(ctx)
 
-	w := writer.NewWriter("./data.csv", output)
+	w := writer.NewWriter(
+		conf.Files.Output,
+		output,
+	)
 
 	go w.Write(ctx)
 
@@ -31,12 +54,16 @@ func Run(mainCtx context.Context) {
 		input,
 		output,
 		wg,
-		cfclient.NewCFClient(),
+		proxy.NewProxy(
+			conf.Proxies,
+		),
 	)
 
-	wg.Add(1)
+	for i := 0; i < conf.Workers.WorkerCount; i++ {
+		wg.Add(1)
 
-	go workerGroup.Worker()
+		go workerGroup.Worker()
+	}
 
 	wg.Wait()
 

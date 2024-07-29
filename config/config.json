@@ -1,0 +1,15 @@
+{
+  "files": {
+    "input": "./data/input.csv",
+    "output": "./data/output.csv"
+  },
+  "workers": {
+    "workerCount": 1,
+    "inputChanel": 1,
+    "outputChanel": 1
+  },
+  "proxies": [
+    "217.29.63.91:11792:HJEUfj:paz7pN",
+    "proxy"
+  ]
+}

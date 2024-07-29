@@ -6,6 +6,7 @@ import (
 	"github.com/go-resty/resty/v2"
 	"log"
 	"net/http"
+	"scp/internal/proxy"
 	"strings"
 )
 
@@ -13,27 +14,33 @@ type CFClientInterface interface {
 	GetSolution(item string) (Solution, error)
 }
 
-type CFClient struct {
-	client  *resty.Client
-	csrf    string
-	cookies []*http.Cookie
+type cfClient struct {
+	client       *resty.Client
+	csrf         string
+	cookies      []*http.Cookie
+	proxyManager proxy.ProxyInterface
 }
 
-func NewCFClient() CFClientInterface {
-	cfClient := &CFClient{
+func NewCFClient(
+	proxyManager proxy.ProxyInterface,
+) CFClientInterface {
+	client := &cfClient{
 		client: resty.New().
 			SetDebug(false).
-			SetProxy("217.29.63.91:11792:HJEUfj:paz7pN"),
+			SetProxy(
+				proxyManager.Get(),
+			),
+		proxyManager: proxyManager,
 	}
 
-	if err := cfClient.getMeta(); err != nil {
+	if err := client.getMeta(); err != nil {
 		log.Fatal(err)
 	}
 
-	return cfClient
+	return client
 }
 
-func (cf *CFClient) getMeta() error {
+func (cf *cfClient) getMeta() error {
 	tokenResp, err := cf.client.R().
 		Get("https://codeforces.com")
 	if err != nil {
@@ -54,7 +61,19 @@ func (cf *CFClient) getMeta() error {
 	return nil
 }
 
-func (cf *CFClient) GetSolution(item string) (Solution, error) {
+func (cf *cfClient) recreateClient() {
+	cf.client = resty.New().
+		SetDebug(false).
+		SetProxy(
+			cf.proxyManager.Get(),
+		)
+
+	if err := cf.getMeta(); err != nil {
+		log.Fatal(err)
+	}
+}
+
+func (cf *cfClient) GetSolution(item string) (Solution, error) {
 	for {
 		solution := Solution{}
 
@@ -88,10 +107,11 @@ func (cf *CFClient) GetSolution(item string) (Solution, error) {
 
 		if solution.Source == "" {
 			log.Printf("%s: %t ::: %s\n", item, false, resp.Body())
-			return Solution{}, errors.New("solution not found")
 		} else {
 			log.Printf("%s: %s", item, solution.Source)
 			return solution, nil
 		}
+
+		cf.recreateClient()
 	}
 }
