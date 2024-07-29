@@ -1,13 +1,15 @@
 package cfclient
 
 import (
-	"errors"
-	"github.com/antchfx/htmlquery"
-	"github.com/go-resty/resty/v2"
 	"log"
 	"net/http"
-	"scp/internal/proxy"
 	"strings"
+
+	"scp/internal/proxy"
+	"scp/pkg/errors"
+
+	"github.com/antchfx/htmlquery"
+	"github.com/go-resty/resty/v2"
 )
 
 type CFClientInterface interface {
@@ -42,17 +44,27 @@ func NewCFClient(
 
 func (cf *cfClient) getMeta() error {
 	tokenResp, err := cf.client.R().
-		Get("https://codeforces.com")
+		Get(getMeta)
 	if err != nil {
 		log.Printf("client.R() ::: %+v", err)
+		return err
 	}
 
-	doc, err := htmlquery.Parse(strings.NewReader(string(tokenResp.Body())))
+	doc, err := htmlquery.Parse(
+		strings.NewReader(
+			string(
+				tokenResp.Body(),
+			),
+		),
+	)
 
-	list := htmlquery.Find(doc, "//meta[@name='X-Csrf-Token']")
+	list := htmlquery.Find(
+		doc,
+		xQuery,
+	)
 
 	if len(list) == 0 {
-		return errors.New("no X-Csrf-Token found")
+		return errors.CSRFTokenNotFoundError
 	}
 
 	cf.csrf = list[0].Attr[len(list[0].Attr)-1].Val
@@ -80,21 +92,25 @@ func (cf *cfClient) GetSolution(item string) (Solution, error) {
 		resp, err := cf.client.R().
 			SetHeaders(
 				map[string]string{
-					"X-Csrf-Token": cf.csrf,
-					"Referer":      "https://codeforces.com/problemset/status",
+					csrfHeader:    cf.csrf,
+					refererHeader: referer,
 				},
 			).
 			SetFormData(
 				map[string]string{
-					"submissionId": item,
-					"csrf_token":   cf.csrf,
+					submissionId: item,
+					csrfToken:    cf.csrf,
 				},
 			).SetCookies(cf.cookies).
 			SetResult(&solution).
-			Post("https://codeforces.com/data/submitSource")
+			Post(getSubmit)
 		if err != nil {
-			log.Printf("%s: %t", item, false)
-			log.Printf("client.R() ::: %+v", err)
+			log.Printf(
+				"%s: %t\nclient.R() ::: %+v",
+				item,
+				false,
+				err,
+			)
 		}
 
 		if resp.StatusCode() != http.StatusOK {
