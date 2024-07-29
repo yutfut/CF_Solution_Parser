@@ -12,7 +12,7 @@ type WriterInterface interface {
 	Close()
 }
 
-type Writer struct {
+type writer struct {
 	file  *os.File
 	input chan []string
 }
@@ -26,13 +26,13 @@ func NewWriter(
 		panic(err)
 	}
 
-	return &Writer{
+	return &writer{
 		file:  file,
 		input: input,
 	}
 }
 
-func (w *Writer) Write(ctx context.Context) {
+func (w *writer) Write(ctx context.Context) {
 	writer := csv.NewWriter(w.file)
 
 	if err := writer.Write(
@@ -60,7 +60,7 @@ func (w *Writer) Write(ctx context.Context) {
 	}
 }
 
-func (w *Writer) Close() {
+func (w *writer) Close() {
 	if err := w.file.Close(); err != nil {
 		log.Fatal(err)
 	}

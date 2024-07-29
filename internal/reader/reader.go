@@ -13,7 +13,7 @@ type ReaderInterface interface {
 	Close()
 }
 
-type Reader struct {
+type reader struct {
 	file   *os.File
 	output chan string
 }
@@ -27,19 +27,19 @@ func NewReader(
 		panic(err)
 	}
 
-	return &Reader{
+	return &reader{
 		file:   file,
 		output: output,
 	}
 }
 
-func (r *Reader) Read(ctx context.Context) {
+func (r *reader) Read(ctx context.Context) {
 	reader := csv.NewReader(r.file)
 
 	for {
 		select {
 		case <-ctx.Done():
-			log.Println("Reader cancelled")
+			log.Println("reader cancelled")
 			r.Close()
 			return
 		default:
@@ -57,7 +57,7 @@ func (r *Reader) Read(ctx context.Context) {
 	}
 }
 
-func (r *Reader) Close() {
+func (r *reader) Close() {
 	if err := r.file.Close(); err != nil {
 		log.Fatal(err)
 	}
